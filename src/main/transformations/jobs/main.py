@@ -1,6 +1,8 @@
 import os
 import shutil
 import sys
+from datetime import date
+
 from resources.dev import config
 from src.main.download.aws_file_download import *
 from src.main.move.move_files import move_s3_to_s3
@@ -30,7 +32,7 @@ cursor = connection.cursor()
 # If this is false, it means that the process was successful:
 if csv_files:
     statement = f'''SELECT distinct file_name FROM {config.database_name}.{config.product_staging_table} 
-                WHERE file_name IN ({str(csv_files)[1:-1]}) and status = "I"'''
+                WHERE file_name IN ({str(csv_files)[1:-1]}) and status = "A"'''
     cursor.execute(statement)
     data = cursor.fetchall()
     if data:
@@ -131,4 +133,34 @@ if error_files:
 
 else:
     logger.info("Error Files does not exists")
+
+# Adding the files into the product_staging table or updating the product_staging_table
+
+logger.infor("******Updating the product staging table*****")
+
+insert_statements = []
+db_name = config.database_name
+table_name = config.product_staging_table
+current_date = date.datetime.now()
+formatted_date = current_date.strftime("%Y-%m-%d %H:%M:%S")
+
+if correct_files:
+    for file in correct_files:
+        file_name = os.path.basename(file)
+        statements = """
+            INSERT INTO {db_name}.{table_name} 
+            ("file_name", "fie_location", "created_date", "status") INTO VALUES 
+            ({file_name}, {file}, {formatted_date}, "A") 
+        """
+        insert_statements.append(statements)
+    logger.info(f"Insert statement created for staging table -- {insert_statements}")
+    logger.info("***** Connecting with MySQL Server *****")
+    for statement in insert_statements:
+        cursor.execute(statement)
+        connection.commit()
+    cursor.close()
+    connection.close()
+else:
+    logger.info("There is no file to process")
+    raise Exception("***** No Data available with correct files *****")
 
