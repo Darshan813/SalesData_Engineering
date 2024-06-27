@@ -1,12 +1,13 @@
 import os
 import sys
-
 from resources.dev import config
 from src.main.download.aws_file_download import *
 from src.main.utility.s3_client_object import S3ClientProvider
 from src.main.utility.logging_config import *
 from src.main.utility.my_sql_session import *
 from src.main.read.aws_read import *
+from src.main.utility.spark_session import *
+
 
 access_key = config.aws_access_key
 secret_key = config.aws_secret_key
@@ -54,6 +55,7 @@ prefix = f"s3://{bucket_name}/"
 local_directory = config.local_directory
 
 file_paths = [url[len(prefix):] for url in s3_file_path]
+print(file_paths)
 
 # To download the files from s3
 try:
@@ -63,7 +65,6 @@ try:
 except Exception as e:
     logger.error("File download error - %s", e)
     sys.exit()
-
 
 # to check all the files in the local_dir, if they are csv or not
 all_files = os.listdir(local_directory)
@@ -84,3 +85,23 @@ if all_files:
 else:
     logger.error("No data to process")
     raise Exception("No data to process")
+
+logger.info(f"CSV files: {csv_files}")
+
+#Schema Validation
+
+logger.info("Checking Schema for transformations")
+
+#if a csv file, doesn't have the proper schema, then the csv file will go in the error_files
+correct_files = []
+spark = spark_session()
+for data in csv_files:
+    data_schema = spark.read.format("csv").option("header", "true").load(data).columns
+    logger.info(f"Schema of the data: {data_schema}")
+    missing_columns = set(config.mandatory_columns) - set(data_schema)
+    logger.info(f"Missing columns: {missing_columns}")
+    if missing_columns:
+        error_files.append(data)
+    else:
+        logger.info("No missing columns for the data")
+        correct_files.append(data)
