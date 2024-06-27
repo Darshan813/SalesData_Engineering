@@ -1,7 +1,9 @@
 import os
+import shutil
 import sys
 from resources.dev import config
 from src.main.download.aws_file_download import *
+from src.main.move.move_files import move_s3_to_s3
 from src.main.utility.s3_client_object import S3ClientProvider
 from src.main.utility.logging_config import *
 from src.main.utility.my_sql_session import *
@@ -105,4 +107,28 @@ for data in csv_files:
     else:
         logger.info("No missing columns for the data")
         correct_files.append(data)
+
+error_files_local_dir = config.error_folder_path_local
+print(error_files)
+
+# To move error files to error_files_dir (local and s3)
+if error_files:
+    for file_path in error_files:
+
+        #Moved to local error_file_dir
+        file_name = os.path.basename(file_path)
+        destination_path = os.path.join(error_files_local_dir, file_name)
+        shutil.move(file_path, destination_path)
+        logger.info(f"Moved {file_name} from {file_path} to {destination_path}")
+
+        #Moved to s3_file_dir
+        source_prefix = "sales_data/"
+        destination_prefix = config.s3_error_directory
+
+        message = move_s3_to_s3(s3_client, config.bucket_name, source_prefix, destination_prefix, file_name)
+        logger.info(f" File move to s3 error dir: {message}")
+
+
+else:
+    logger.info("Error Files does not exists")
 
