@@ -63,3 +63,24 @@ try:
 except Exception as e:
     logger.error("File download error - %s", e)
     sys.exit()
+
+
+# to check all the files in the local_dir, if they are csv or not
+all_files = os.listdir(local_directory)
+logger.info("Total files: %s", all_files)
+
+if all_files:
+    csv_files = []
+    error_files = [] #not csv
+    for files in all_files:
+        if files.endswith("csv"):
+            csv_files.append(os.path.abspath(os.path.join(local_directory, files)))
+        else:
+            error_files.append(os.path.abspath(os.path.join(local_directory, files))) #will go in the error_dir
+
+    if not csv_files: #if all the files are other than csv files, like json
+        logger.error("No CSV files")
+        raise Exception("No CSV files")
+else:
+    logger.error("No data to process")
+    raise Exception("No data to process")
