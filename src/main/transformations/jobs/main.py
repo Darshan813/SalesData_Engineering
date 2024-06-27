@@ -1,5 +1,8 @@
 import os
+import sys
+
 from resources.dev import config
+from src.main.download.aws_file_download import *
 from src.main.utility.s3_client_object import S3ClientProvider
 from src.main.utility.logging_config import *
 from src.main.utility.my_sql_session import *
@@ -34,8 +37,29 @@ if csv_files:
 else:
     logger.info("Last run Success")
 
+# To get the files_name from s3 folder
+try:
+    s3_reader = S3Reader()
+    foder_path = "sales_data/"
+    bucket_name = config.bucket_name
+    s3_file_path = s3_reader.list_files(s3_client, bucket_name, foder_path) #return a list
+    logger.info("Absolute file path: %s", s3_file_path)
+    if not s3_file_path:
+        logger.info(f"No file found at {foder_path}")
+        raise Exception("No Data available to process")
+except Exception as e:
+    logger.error("Exited with error - %s", e)
 
+prefix = f"s3://{bucket_name}/"
+local_directory = config.local_directory
 
+file_paths = [url[len(prefix):] for url in s3_file_path]
 
+# To download the files from s3
+try:
+    s3_downloader = S3FileDownloader(s3_client, bucket_name, local_directory)
+    s3_downloader.download_files(file_paths)
 
-
+except Exception as e:
+    logger.error("File download error - %s", e)
+    sys.exit()
