@@ -21,3 +21,21 @@ csv_files = [file for file in os.listdir(config.local_directory) if file.endswit
 connection = get_mysql_connection()
 cursor = connection.cursor()
 
+# If this is false, it means that the process was successful:
+if csv_files:
+    statement = f'''SELECT distinct file_name FROM {config.database_name}.{config.product_staging_table} 
+                WHERE file_name IN ({str(csv_files)[1:-1]}) and status = "I"'''
+    cursor.execute(statement)
+    data = cursor.fetchall()
+    if data:
+        logger.info("Last run Failed")
+    else:
+        logger.info("No record match")
+else:
+    logger.info("Last run Success")
+
+
+
+
+
+
