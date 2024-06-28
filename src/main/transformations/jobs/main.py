@@ -12,7 +12,7 @@ from src.main.utility.logging_config import *
 from src.main.utility.my_sql_session import *
 from src.main.read.aws_read import *
 from src.main.utility.spark_session import *
-
+from src.main.transformations.jobs.dimension_tables_join import *
 
 access_key = config.aws_access_key
 secret_key = config.aws_secret_key
@@ -201,3 +201,13 @@ for data in correct_files:
 
     final_df = final_df.union(data_df)
 
+database_client = DatabaseReader(config.url, config.properties)
+
+customer_table_df = database_client.create_dataframe(spark, config.customer_table_name)
+product_table_df = database_client.create_dataframe(spark, config.product_table)
+sales_team_df = database_client.create_dataframe(spark, config.sales_team_table)
+product_staging_table_df = database_client.create_dataframe(spark, config.product_staging_table)
+store_table_df = database_client.create_dataframe(spark, config.store_table)
+
+s3_customer_store_sales_df_join = dimensions_table_join(final_df, customer_table_df, store_table_df, sales_team_df)
+s3_customer_store_sales_df_join.show()
