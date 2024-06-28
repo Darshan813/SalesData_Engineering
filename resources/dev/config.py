@@ -18,7 +18,7 @@ database_name = "sales_project"
 url = f"jdbc:mysql://localhost:3306/{database_name}"
 properties = {
     "user": "root",
-    "password": "Darshan12345",
+    "password": os.getenv("db_password"),
     "driver": "com.mysql.cj.jdbc.Driver"
 }
 host = "localhost"

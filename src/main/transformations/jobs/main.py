@@ -1,11 +1,12 @@
 import os
 import shutil
 import sys
-from datetime import date
+import datetime
 
 from resources.dev import config
 from src.main.download.aws_file_download import *
 from src.main.move.move_files import move_s3_to_s3
+from src.main.read.database_read import DatabaseReader
 from src.main.utility.s3_client_object import S3ClientProvider
 from src.main.utility.logging_config import *
 from src.main.utility.my_sql_session import *
@@ -136,22 +137,24 @@ else:
 
 # Adding the files into the product_staging table or updating the product_staging_table
 
-logger.infor("******Updating the product staging table*****")
+logger.info("******Updating the product staging table*****")
 
 insert_statements = []
 db_name = config.database_name
 table_name = config.product_staging_table
-current_date = date.datetime.now()
+current_date = datetime.datetime.now()
 formatted_date = current_date.strftime("%Y-%m-%d %H:%M:%S")
 
 if correct_files:
     for file in correct_files:
         file_name = os.path.basename(file)
-        statements = """
-            INSERT INTO {db_name}.{table_name} 
-            ("file_name", "fie_location", "created_date", "status") INTO VALUES 
-            ({file_name}, {file}, {formatted_date}, "A") 
-        """
+        print(file_name)
+        print(file)
+        statements = f'''
+            INSERT INTO {db_name}.{config.product_staging_table} 
+            (`file_name`, `file_location`, `created_date`, `status`) VALUES 
+            ('{file_name}', '{file}', '{formatted_date}', 'A') 
+        '''
         insert_statements.append(statements)
     logger.info(f"Insert statement created for staging table -- {insert_statements}")
     logger.info("***** Connecting with MySQL Server *****")
@@ -164,3 +167,11 @@ else:
     logger.info("There is no file to process")
     raise Exception("***** No Data available with correct files *****")
 
+
+logger.info("***** Staging Table Updated Successfully *****")
+
+logging.info("***** Fixing Extra Column Coming from source ******")
+
+
+database_client = DatabaseReader(config.url, config.properties)
+final_df = database_client.create_dataframe(spark, "empty_df_create_table")
