@@ -201,4 +201,3 @@ for data in correct_files:
 
     final_df = final_df.union(data_df)
 
-    final_df.show()
