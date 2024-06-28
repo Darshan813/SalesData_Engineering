@@ -36,6 +36,8 @@ if csv_files:
                 WHERE file_name IN ({str(csv_files)[1:-1]}) and status = "A"'''
     cursor.execute(statement)
     data = cursor.fetchall()
+    print("Printing Data...........")
+    print(data) #[('file_name.csv',), ('file1_name.csv',)]
     if data:
         logger.info("Last run Failed")
     else:
@@ -97,7 +99,9 @@ logger.info(f"CSV files: {csv_files}")
 
 logger.info("Checking Schema for transformations")
 
-#if a csv file, doesn't have the proper schema, then the csv file will go in the error_files
+#if a csv file, doesn't have the proper schema (if they have less columns then the original schema),
+# then the csv file will go in the error_files
+
 correct_files = []
 spark = spark_session()
 for data in csv_files:
@@ -135,7 +139,8 @@ if error_files:
 else:
     logger.info("Error Files does not exists")
 
-# Adding the files into the product_staging table or updating the product_staging_table
+# Adding the files into the product_staging table or updating the product_staging_table, Adding files which also
+# have extra columns, that can be handled later.
 
 logger.info("******Updating the product staging table*****")
 
@@ -175,3 +180,25 @@ logging.info("***** Fixing Extra Column Coming from source ******")
 
 database_client = DatabaseReader(config.url, config.properties)
 final_df = database_client.create_dataframe(spark, "empty_df_create_table")
+
+# To check the correct files, if they have extra columns..., if they have extra columns, adding the columns in the
+# new additional columns in comma separated value type.
+
+for data in correct_files:
+    data_df = spark.read.format("csv").option("header", "true").option("inferschema", "true").load(data)
+    data_schema = data_df.columns
+    extra_columns = list(set(data_schema) - set(config.mandatory_columns))
+    logger.info(f"Extra columns presents are {extra_columns}")
+    if extra_columns:
+        data_df = data_df.withColumn("additional column", concat_ws(", ", *extra_columns))\
+            .select("customer_id","store_id","product_name","sales_date","sales_person_id","price","quantity",
+                    "total_cost", "additional column")
+        logger.info(f"Processed {data} and added additonal column")
+    else:
+        data_df = data_df.withColumn("additional column", lit(None)) \
+            .select("customer_id", "store_id", "product_name", "sales_date", "sales_person_id", "price", "quantity",
+                    "total_cost", "additional column")
+
+    final_df = final_df.union(data_df)
+
+    final_df.show()
