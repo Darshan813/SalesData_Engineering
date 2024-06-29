@@ -250,3 +250,23 @@ s3_uploader = UploadToS3(s3_client)
 message = s3_uploader.upload_to_s3(config.s3_sales_datamart_directory, config.bucket_name,
                                    config.sales_team_data_mart_local_file)
 logger.info(f"{message}")
+
+# Writing data to partitons
+
+logger.info("***** Uploading sales partition data mart to local ***** ")
+sales_data_mart_df.write.format("parquet").option("header", "true").mode("overwrite")\
+    .partitionBy("sales_month", "store_id").option("path", config.sales_team_data_mart_partitioned_local_file).save()
+
+# Moving data to s3
+logger.info("***** Uploading sales partition data mart to s3 ***** ")
+
+s3_prefix = "sales_partitioned_data_mart"
+current_epoch = int(datetime.datetime.now().timestamp())
+
+for root, dirs, files in os.walk(config.sales_team_data_mart_partitioned_local_file):
+    for file in files:
+        print(file)
+        local_file_path = os.path.join(root, file)
+        relative_file_path = os.path.relpath(local_file_path, config.sales_team_data_mart_partitioned_local_file)
+        s3_key = f"{s3_prefix}/{current_epoch}/{relative_file_path}"
+        s3_client.upload_file(local_file_path, config.bucket_name, s3_key)
