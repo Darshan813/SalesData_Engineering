@@ -7,12 +7,14 @@ from resources.dev import config
 from src.main.download.aws_file_download import *
 from src.main.move.move_files import move_s3_to_s3
 from src.main.read.database_read import DatabaseReader
+from src.main.upload.upload_to_s3 import UploadToS3
 from src.main.utility.s3_client_object import S3ClientProvider
 from src.main.utility.logging_config import *
 from src.main.utility.my_sql_session import *
 from src.main.read.aws_read import *
 from src.main.utility.spark_session import *
 from src.main.transformations.jobs.dimension_tables_join import *
+from src.main.write.parquet_writer import ParquetWriter
 
 access_key = config.aws_access_key
 secret_key = config.aws_secret_key
@@ -23,7 +25,7 @@ s3_client = s3_client_provider.get_client()
 
 response = s3_client.list_buckets()
 
-#logger.info(response["Buckets"])
+# logger.info(response["Buckets"])
 
 csv_files = [file for file in os.listdir(config.local_directory) if file.endswith(".csv")]
 
@@ -37,7 +39,7 @@ if csv_files:
     cursor.execute(statement)
     data = cursor.fetchall()
     print("Printing Data...........")
-    print(data) #[('file_name.csv',), ('file1_name.csv',)]
+    print(data)  # [('file_name.csv',), ('file1_name.csv',)]
     if data:
         logger.info("Last run Failed")
     else:
@@ -50,7 +52,7 @@ try:
     s3_reader = S3Reader()
     foder_path = "sales_data/"
     bucket_name = config.bucket_name
-    s3_file_path = s3_reader.list_files(s3_client, bucket_name, foder_path) #return a list
+    s3_file_path = s3_reader.list_files(s3_client, bucket_name, foder_path)  # return a list
     logger.info("Absolute file path: %s", s3_file_path)
     if not s3_file_path:
         logger.info(f"No file found at {foder_path}")
@@ -79,14 +81,14 @@ logger.info("Total files: %s", all_files)
 
 if all_files:
     csv_files = []
-    error_files = [] #not csv
+    error_files = []  # not csv
     for files in all_files:
         if files.endswith("csv"):
             csv_files.append(os.path.abspath(os.path.join(local_directory, files)))
         else:
-            error_files.append(os.path.abspath(os.path.join(local_directory, files))) #will go in the error_dir
+            error_files.append(os.path.abspath(os.path.join(local_directory, files)))  # will go in the error_dir
 
-    if not csv_files: #if all the files are other than csv files, like json
+    if not csv_files:  # if all the files are other than csv files, like json
         logger.error("No CSV files")
         raise Exception("No CSV files")
 else:
@@ -95,11 +97,11 @@ else:
 
 logger.info(f"CSV files: {csv_files}")
 
-#Schema Validation
+# Schema Validation
 
 logger.info("Checking Schema for transformations")
 
-#if a csv file, doesn't have the proper schema (if they have less columns then the original schema),
+# if a csv file, doesn't have the proper schema (if they have less columns then the original schema),
 # then the csv file will go in the error_files
 
 correct_files = []
@@ -121,14 +123,13 @@ print(error_files)
 # To move error files to error_files_dir (local and s3)
 if error_files:
     for file_path in error_files:
-
-        #Moved to local error_file_dir
+        # Moved to local error_file_dir
         file_name = os.path.basename(file_path)
         destination_path = os.path.join(error_files_local_dir, file_name)
         shutil.move(file_path, destination_path)
         logger.info(f"Moved {file_name} from {file_path} to {destination_path}")
 
-        #Moved to s3_file_dir
+        # Moved to s3_file_dir
         source_prefix = "sales_data/"
         destination_prefix = config.s3_error_directory
 
@@ -172,11 +173,9 @@ else:
     logger.info("There is no file to process")
     raise Exception("***** No Data available with correct files *****")
 
-
 logger.info("***** Staging Table Updated Successfully *****")
 
 logging.info("***** Fixing Extra Column Coming from source ******")
-
 
 database_client = DatabaseReader(config.url, config.properties)
 final_df = database_client.create_dataframe(spark, "empty_df_create_table")
@@ -190,8 +189,8 @@ for data in correct_files:
     extra_columns = list(set(data_schema) - set(config.mandatory_columns))
     logger.info(f"Extra columns presents are {extra_columns}")
     if extra_columns:
-        data_df = data_df.withColumn("additional column", concat_ws(", ", *extra_columns))\
-            .select("customer_id","store_id","product_name","sales_date","sales_person_id","price","quantity",
+        data_df = data_df.withColumn("additional column", concat_ws(", ", *extra_columns)) \
+            .select("customer_id", "store_id", "product_name", "sales_date", "sales_person_id", "price", "quantity",
                     "total_cost", "additional column")
         logger.info(f"Processed {data} and added additonal column")
     else:
@@ -211,3 +210,43 @@ store_table_df = database_client.create_dataframe(spark, config.store_table)
 
 s3_customer_store_sales_df_join = dimensions_table_join(final_df, customer_table_df, store_table_df, sales_team_df)
 s3_customer_store_sales_df_join.show()
+
+# Customer data mart
+logger.info("***** Creating Customer Data Mart *****")
+customer_data_mart_df = s3_customer_store_sales_df_join.select("ct.customer_id", "ct.first_name", "ct.last_name",
+                                                               "ct.address", "ct.pincode", "phone_number", "sales_date",
+                                                               "total_cost")
+
+customer_data_mart_df.show()
+
+parquetWriter = ParquetWriter("overwrite", "parquet")
+# This will write the parquet file to local
+logger.info("****** Uploading the customer Parquet File to local *****")
+parquetWriter.dataframe_writer(customer_data_mart_df, config.customer_data_mart_local_file)
+
+logger.info("***** Successfully uploaded the customer Parquet File to Local ******")
+# This will upload the parquet file from local to s3
+logger.info("***** Uploading the Parquet File from Local to S3 *****")
+s3_uploader = UploadToS3(s3_client)
+message = s3_uploader.upload_to_s3(config.s3_customer_datamart_directory, config.bucket_name,
+                                   config.customer_data_mart_local_file)
+logger.info(f"{message}")
+
+# Sales data mart
+
+sales_data_mart_df = s3_customer_store_sales_df_join.select("store_id", "sales_person_id",
+                                                            "sales_person_first_name", "sales_person_last_name",
+                                                            "store_manager_name", "manager_id", "is_manager",
+                                                            "sales_person_address", "sales_person_pincode",
+                                                            "sales_date", "total_cost",
+                                                            expr("SUBSTRING(sales_date,1, 7) as sales_month"))
+
+sales_data_mart_df.show()
+
+parquetWriter = ParquetWriter("overwrite", "parquet")
+parquetWriter.dataframe_writer(sales_data_mart_df, config.sales_team_data_mart_local_file)
+
+s3_uploader = UploadToS3(s3_client)
+message = s3_uploader.upload_to_s3(config.s3_sales_datamart_directory, config.bucket_name,
+                                   config.sales_team_data_mart_local_file)
+logger.info(f"{message}")
