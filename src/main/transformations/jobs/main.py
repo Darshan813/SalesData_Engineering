@@ -4,6 +4,7 @@ import sys
 import datetime
 
 from resources.dev import config
+from src.main.delete.local_file_delete import delete_local_file
 from src.main.download.aws_file_download import *
 from src.main.move.move_files import move_s3_to_s3
 from src.main.read.database_read import DatabaseReader
@@ -288,3 +289,34 @@ logger.info("Transforming sales data mart....")
 sales_mart_transform_write_to_sql(sales_data_mart_df)
 
 logger.info("Sales Data Transformation done successfully. Data Loaded in mySQL")
+
+
+source_prefix = config.s3_source_directory #sales_partition_data(folder_nmae)
+destination_prefix = config.s3_processed_directory #sales_data_processed (folder_name)
+message = move_s3_to_s3(s3_client, config.bucket_name, source_prefix, destination_prefix)
+logger.info(message)
+
+logger.info("***** Deleting data from Local folder file_from_s3 *****")
+
+delete_local_file(config.local_directory)
+
+logger.info("***** Deleted Successfully *****")
+
+
+logger.info("***** Deleting data from Local folder customer_data_mart *****")
+
+delete_local_file(config.customer_data_mart_local_file)
+
+logger.info("***** Deleted Successfully *****")
+
+logger.info("***** Deleting data from Local folder sales_team_data_mart *****")
+
+delete_local_file(config.sales_team_data_mart_local_file)
+
+logger.info("***** Deleted Successfully *****")
+
+
+
+
+
+
