@@ -7,6 +7,8 @@ from resources.dev import config
 from src.main.download.aws_file_download import *
 from src.main.move.move_files import move_s3_to_s3
 from src.main.read.database_read import DatabaseReader
+from src.main.transformations.jobs.customer_mart_sql_tranform_write import customer_mart_calculation_table_write
+from src.main.transformations.jobs.sales_data_mart_sql_transform import sales_mart_transform_write_to_sql
 from src.main.upload.upload_to_s3 import UploadToS3
 from src.main.utility.s3_client_object import S3ClientProvider
 from src.main.utility.logging_config import *
@@ -270,3 +272,19 @@ for root, dirs, files in os.walk(config.sales_team_data_mart_partitioned_local_f
         relative_file_path = os.path.relpath(local_file_path, config.sales_team_data_mart_partitioned_local_file)
         s3_key = f"{s3_prefix}/{current_epoch}/{relative_file_path}"
         s3_client.upload_file(local_file_path, config.bucket_name, s3_key)
+
+#Transforming the data according to the business needs
+
+logger.info("Transforming the data according to the business needs")
+
+logger.info("Transforming customer data mart....")
+
+customer_mart_calculation_table_write(customer_data_mart_df)
+
+logger.info("Customer Data Transformation done successfully. Data Loaded in mySQL")
+
+logger.info("Transforming sales data mart....")
+
+sales_mart_transform_write_to_sql(sales_data_mart_df)
+
+logger.info("Sales Data Transformation done successfully. Data Loaded in mySQL")
