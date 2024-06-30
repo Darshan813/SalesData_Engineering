@@ -236,7 +236,7 @@ message = s3_uploader.upload_to_s3(config.s3_customer_datamart_directory, config
 logger.info(f"{message}")
 
 # Sales data mart
-
+print("Sales Data Mart")
 sales_data_mart_df = s3_customer_store_sales_df_join.select("store_id", "sales_person_id",
                                                             "sales_person_first_name", "sales_person_last_name",
                                                             "store_manager_name", "manager_id", "is_manager",
@@ -268,7 +268,6 @@ current_epoch = int(datetime.datetime.now().timestamp())
 
 for root, dirs, files in os.walk(config.sales_team_data_mart_partitioned_local_file):
     for file in files:
-        print(file)
         local_file_path = os.path.join(root, file)
         relative_file_path = os.path.relpath(local_file_path, config.sales_team_data_mart_partitioned_local_file)
         s3_key = f"{s3_prefix}/{current_epoch}/{relative_file_path}"
@@ -302,7 +301,6 @@ delete_local_file(config.local_directory)
 
 logger.info("***** Deleted Successfully *****")
 
-
 logger.info("***** Deleting data from Local folder customer_data_mart *****")
 
 delete_local_file(config.customer_data_mart_local_file)
@@ -315,8 +313,26 @@ delete_local_file(config.sales_team_data_mart_local_file)
 
 logger.info("***** Deleted Successfully *****")
 
+# Updating staging table
 
+update_statements = []
 
+if correct_files:
+    for file in correct_files:
+        file_name = os.path.basename(file)
+        statements = f''' 
+            UPDATE {db_name}.{config.product_staging_table} 
+            SET status = "I", updated_date = '{formatted_date}'
+            WHERE file_name = '{file_name}'
+                    '''
 
+        update_statements.append(statements)
+    connection = get_mysql_connection()
+    cursor = connection.cursor()
+    for statement in update_statements:
+        cursor.execute(statement)
+        connection.commit()
 
-
+else:
+    logger.error("***** There is some error in process!!")
+    sys.exit()
